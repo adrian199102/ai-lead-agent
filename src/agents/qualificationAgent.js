@@ -1,6 +1,7 @@
-import openai from '../services/openai.js'
-
 export async function qualificationAgent(message) {
+  // Import the live provider only when the real agent runs. Tests inject a mock
+  // extractor and must not require production credentials during module load.
+  const { default: openai } = await import('../services/openai.js')
   const completion = await openai.chat.completions.create({
     model: 'gpt-4.1-mini',
     messages: [
