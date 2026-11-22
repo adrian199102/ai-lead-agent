@@ -1,11 +1,16 @@
-import dotenv from 'dotenv'
-dotenv.config()
-
+import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-)
+const url = process.env.SUPABASE_URL
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+if (!url || !key) {
+  throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for server-side persistence')
+}
+
+// Server-only client. Never import this module into browser code.
+const supabase = createClient(url, key, {
+  auth: { persistSession: false, autoRefreshToken: false }
+})
 
 export default supabase
