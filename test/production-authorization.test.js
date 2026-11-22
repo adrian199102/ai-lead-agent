@@ -76,3 +76,42 @@ test('authorized tenant agent can qualify a lead', async t => {
   assert.equal(res.json().lead_id, B)
   assert.equal(db.calls.rpc, 1)
 })
+
+
+test('simultaneous same-key requests converge to one logical lead', async t => {
+  const db = fakeDb()
+  const stored = new Map()
+  let writes = 0
+  db.from = table => {
+    const values = {}
+    return {
+      select() { return this },
+      eq(k, v) { values[k] = v; return this },
+      async maybeSingle() {
+        if (table === 'business_memberships') {
+          return { data: values.business_id === A && values.user_id === 'user-a' ? { role: 'agent' } : null, error: null }
+        }
+        return { data: null, error: null }
+      }
+    }
+  }
+  db.rpc = async (_name, args) => {
+    const key = args.p_business_id + ':' + args.p_event_key
+    await new Promise(resolve => setTimeout(resolve, 5))
+    if (!stored.has(key)) {
+      stored.set(key, B)
+      writes++
+      return { data: [{ out_lead_id: B, out_duplicate: false }], error: null }
+    }
+    return { data: [{ out_lead_id: B, out_duplicate: true }], error: null }
+  }
+  const app = buildApp({ db, env: { NODE_ENV: 'test' }, extract: async () => ({ budget: null, timeline: null }) })
+  t.after(() => app.close())
+  const responses = await Promise.all(Array.from({ length: 10 }, () =>
+    app.inject({ method: 'POST', url: '/v1/leads/qualify', headers, payload })
+  ))
+  assert.equal(writes, 1)
+  assert.equal(responses.filter(r => r.statusCode === 201).length, 1)
+  assert.equal(responses.filter(r => r.statusCode === 200).length, 9)
+  assert.ok(responses.every(r => r.json().lead_id === B))
+})
