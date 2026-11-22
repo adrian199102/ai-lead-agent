@@ -16,20 +16,35 @@ const messageSchema = {
   }
 }
 
+function requireDevApiKey(request, reply, done) {
+  const configured = process.env.DEV_API_KEY
+  if (!configured || request.headers['x-api-key'] !== configured) {
+    reply.code(401).send({ error: 'Unauthorized' })
+    return
+  }
+  done()
+}
+
 fastify.get('/', async () => ({ status: 'AI Agent Running' }))
 
-// Local development only: extraction without persistence.
-fastify.post('/test-agent', { schema: { body: messageSchema } }, async (request) => {
-  return qualificationAgent(request.body.message)
-})
+// Development-only routes. Do not expose publicly without production authentication,
+// tenant authorization, and rate limiting.
+if (process.env.NODE_ENV !== 'production') {
+  fastify.post('/test-agent', {
+    preHandler: requireDevApiKey,
+    schema: { body: messageSchema }
+  }, async (request) => qualificationAgent(request.body.message))
 
-// MVP: create a lead, persist its inbound message and extracted state.
-fastify.post('/leads/qualify', { schema: { body: messageSchema } }, async (request, reply) => {
-  const { message, name, phone } = request.body
-  const qualification = await qualificationAgent(message)
-  const result = await qualifyNewLead({ name, phone, message, qualification })
-  return reply.code(201).send(result)
-})
+  fastify.post('/leads/qualify', {
+    preHandler: requireDevApiKey,
+    schema: { body: messageSchema }
+  }, async (request, reply) => {
+    const { message, name, phone } = request.body
+    const qualification = await qualificationAgent(message)
+    const result = await qualifyNewLead({ name, phone, message, qualification })
+    return reply.code(201).send(result)
+  })
+}
 
 fastify.setErrorHandler((error, request, reply) => {
   request.log.error({ err: error }, 'Request failed')
