@@ -31,6 +31,63 @@ export function buildApp({ extract = qualificationAgent, db, env = process.env }
   }
 
   fastify.get('/', async () => ({ status: 'AI Agent Running' }))
+
+  // Verify user JWT and tenant membership before any privileged database write.
+  fastify.post('/v1/leads/qualify', {
+    schema: {
+      body: {
+        type: 'object', additionalProperties: false, required: ['business_id', 'message'],
+        properties: {
+          business_id: { type: 'string', format: 'uuid' },
+          message: { type: 'string', minLength: 1, maxLength: 4000 },
+          name: { type: 'string', minLength: 1, maxLength: 200 },
+          phone: { type: 'string', minLength: 3, maxLength: 40 }
+        }
+      },
+      headers: {
+        type: 'object', required: ['authorization', 'idempotency-key'],
+        properties: {
+          authorization: { type: 'string' },
+          'idempotency-key': { type: 'string', minLength: 1, maxLength: 200 }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const bearer = request.headers.authorization
+    if (!bearer?.startsWith('Bearer ') || !bearer.slice(7).trim()) {
+      return reply.code(401).send({ error: 'Unauthorized' })
+    }
+    const { data: auth, error: authError } = await db.auth.getUser(bearer.slice(7))
+    if (authError || !auth?.user?.id) return reply.code(401).send({ error: 'Unauthorized' })
+    const { business_id: businessId, name, phone, message } = request.body
+    const { data: membership, error: membershipError } = await db.from('business_memberships')
+      .select('role').eq('business_id', businessId).eq('user_id', auth.user.id).maybeSingle()
+    if (membershipError) throw new Error('Unable to verify business membership', { cause: membershipError })
+    if (!membership || !['owner', 'admin', 'agent'].includes(membership.role)) {
+      return reply.code(403).send({ error: 'Forbidden' })
+    }
+    const eventKey = request.headers['idempotency-key']
+    const hash = payloadHash({ name, phone, message })
+    const { data: existing, error: lookupError } = await db.from('inbound_events')
+      .select('lead_id,payload_hash').eq('business_id', businessId)
+      .eq('event_key', eventKey).maybeSingle()
+    if (lookupError) throw new Error('Unable to check inbound event', { cause: lookupError })
+    if (existing) {
+      if (existing.payload_hash !== hash) return reply.code(409).send({ error: 'Idempotency key conflict' })
+      return reply.code(200).send({ lead_id: existing.lead_id, duplicate: true })
+    }
+    const qualification = await extract(message)
+    try {
+      const result = await qualifyNewLead({ businessId, eventKey, name, phone, message, qualification }, db)
+      return reply.code(result.duplicate ? 200 : 201).send(result)
+    } catch (error) {
+      if (error.cause?.message?.includes('Idempotency key reused')) {
+        return reply.code(409).send({ error: 'Idempotency key conflict' })
+      }
+      throw error
+    }
+  })
+
   if (env.NODE_ENV !== 'production') {
     fastify.post('/test-agent', {
       preHandler: requireDevKey, schema: { body: messageSchema }
