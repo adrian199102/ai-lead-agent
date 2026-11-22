@@ -1,4 +1,4 @@
--- Apply in Supabase SQL editor on a DEVELOPMENT project first.
+-- Development migration source. The connected development Supabase project already has\n-- the tenant foundation and transactional RPC deployed as separate migrations.\n-- Do not reapply this combined file to that project without reconciling migration history.
 -- Assumes original README's public.leads, public.messages, public.lead_state exist.
 create extension if not exists pgcrypto;
 
@@ -62,7 +62,50 @@ begin
     raise exception 'Unknown business';
   end if;
   if p_event_key is null or length(p_event_key) < 1 or length(p_event_key) > 200
-     or p_payload_hash is null or length(p_payload_hash) <> 64
+     or p_payload_hash is null or p_payload_hash !~ '^[0-9a-f]{64}
+     or p_message is null or length(trim(p_message)) = 0 then
+    raise exception 'Invalid inbound event';
+  end if;
+
+  -- A unique event reservation serializes concurrent deliveries of the same event.
+  insert into public.inbound_events(business_id,event_key,payload_hash)
+  values (p_business_id,p_event_key,p_payload_hash)
+  on conflict do nothing;
+  v_new := found;
+
+  select e.lead_id, e.payload_hash into v_lead_id,v_hash
+    from public.inbound_events e
+   where e.business_id = p_business_id and e.event_key = p_event_key
+   for update;
+
+  if v_hash is distinct from p_payload_hash then
+    raise exception 'Idempotency key reused with different payload';
+  end if;
+  if not v_new then
+    return query select v_lead_id, true;
+    return;
+  end if;
+
+  insert into public.leads(business_id,name,phone,stage,status,message_count)
+  values(p_business_id,p_name,p_phone,'new','active',1)
+  returning id into v_lead_id;
+
+  insert into public.messages(business_id,lead_id,direction,message)
+  values(p_business_id,v_lead_id,'inbound',p_message);
+
+  insert into public.lead_state(business_id,lead_id,budget,timeline,qualified,score,last_agent)
+  values(p_business_id,v_lead_id,p_budget,p_timeline,false,0,'qualification');
+
+  update public.inbound_events set lead_id=v_lead_id
+  where business_id=p_business_id and event_key=p_event_key;
+
+  return query select v_lead_id, false;
+end;
+$$;
+
+revoke all on function public.create_qualified_lead(uuid,text,text,text,text,text,text,text) from public, anon, authenticated;
+grant execute on function public.create_qualified_lead(uuid,text,text,text,text,text,text,text) to service_role;
+
      or p_message is null or length(trim(p_message)) = 0 then
     raise exception 'Invalid inbound event';
   end if;
