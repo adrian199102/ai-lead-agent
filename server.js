@@ -45,7 +45,7 @@ export function buildApp({ extract = qualificationAgent, db, env = process.env }
         }
       },
       headers: {
-        type: 'object', required: ['authorization', 'idempotency-key'],
+        type: 'object', required: ['idempotency-key'],
         properties: {
           authorization: { type: 'string' },
           'idempotency-key': { type: 'string', minLength: 1, maxLength: 200 }
