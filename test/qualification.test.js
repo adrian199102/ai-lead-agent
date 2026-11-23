@@ -13,12 +13,19 @@ function fakeDb() {
   return {
     records,
     from(table) {
-      assert.equal(table, 'inbound_events')
       const q = {}
       return {
         select() { return this },
         eq(k,v) { q[k]=v; return this },
-        async maybeSingle() { return { data: events.get(q.business_id + ':' + q.event_key) ?? null, error: null } }
+        async maybeSingle() {
+          if (table === 'qualification_assessments') {
+            const state = records.states.find(s => s.lead_id === q.lead_id)
+            const missing = ['budget', 'timeline'].filter(k => !state?.[k])
+            return { data: { policy_version: 1, required_fields: ['budget', 'timeline'], missing_fields: missing, completeness_score: (2-missing.length)*50, next_action: missing.includes('budget') ? 'ask_budget' : missing.includes('timeline') ? 'ask_timeline' : 'review_qualification', qualification_decision: 'pending' }, error: null }
+          }
+          assert.equal(table, 'inbound_events')
+          return { data: events.get(q.business_id + ':' + q.event_key) ?? null, error: null }
+        }
       }
     },
     async rpc(name, args) {
