@@ -23,7 +23,9 @@ export async function POST(request: NextRequest) {
   if (['repeat', 'conflict'].includes(mode) && !eventKey) return NextResponse.json({ error: 'Run create first to obtain a test key' }, { status: 400 })
   const key = eventKey || 'qa-' + crypto.randomUUID()
   const message = mode === 'conflict' ? 'Synthetic QA: budget changed to 200000, timeline next quarter' : 'Synthetic QA: budget 100000, timeline next month'
-  const headers: Record<string,string> = { 'Content-Type': 'application/json', 'idempotency-key': key }
+  const bypassSecret = process.env.AI_LEAD_AGENT_API_BYPASS_SECRET
+  if (!bypassSecret) return NextResponse.json({ error: 'Server-to-server API access is not configured' }, { status: 503 })
+  const headers: Record<string,string> = { 'Content-Type': 'application/json', 'idempotency-key': key, 'x-vercel-protection-bypass': bypassSecret }
   if (mode !== 'missing-token') headers.Authorization = mode === 'invalid-token' ? 'Bearer invalid-qa-token' : 'Bearer ' + session.access_token
   try {
     const response = await fetch(API_URL + '/v1/leads/qualify', {
@@ -34,6 +36,10 @@ export async function POST(request: NextRequest) {
     const raw = await response.text()
     let result: unknown
     try { result = JSON.parse(raw) } catch { result = { message: raw.slice(0, 300) } }
+    const payload = result as { error?: { message?: string }; message?: string; protection?: unknown }
+    if (payload?.protection || payload?.error?.message === 'Protected deployment' || payload?.message === 'Protected by Vercel Authentication') {
+      return NextResponse.json({ error: 'Vercel deployment protection rejected the server-to-server request; application authorization was not tested', upstream_status: response.status, mode }, { status: 502 })
+    }
     return NextResponse.json({ http_status: response.status, mode, event_key: key, result })
   } catch {
     return NextResponse.json({ error: 'Backend unavailable or timed out. No test result confirmed.' }, { status: 502 })
