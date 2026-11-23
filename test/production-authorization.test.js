@@ -115,3 +115,61 @@ test('simultaneous same-key requests converge to one logical lead', async t => {
   assert.equal(responses.filter(r => r.statusCode === 200).length, 9)
   assert.ok(responses.every(r => r.json().lead_id === B))
 })
+
+
+test('RBAC qualification matrix: owner, admin, agent permitted; viewer and unknown denied', async t => {
+  for (const [role, expected] of [
+    ['owner', 201],
+    ['admin', 201],
+    ['agent', 201],
+    ['viewer', 403],
+    ['billing', 403],
+    [null, 403]
+  ]) {
+    const db = fakeDb({ role })
+    let extracted = 0
+    const app = buildApp({
+      db,
+      env: { NODE_ENV: 'test' },
+      extract: async () => { extracted++; return { budget: null, timeline: null } }
+    })
+    t.after(() => app.close())
+    const response = await app.inject({
+      method: 'POST', url: '/v1/leads/qualify', headers, payload
+    })
+    assert.equal(response.statusCode, expected, 'role=' + role + ': ' + response.body)
+    assert.equal(db.calls.rpc, expected === 201 ? 1 : 0, 'role=' + role)
+    assert.equal(extracted, expected === 201 ? 1 : 0, 'role=' + role)
+  }
+})
+
+test('RBAC checks use the authenticated user ID, not a user ID supplied in the body', async t => {
+  const db = fakeDb({ user: 'user-a', role: 'owner' })
+  const app = buildApp({ db, env: { NODE_ENV: 'test' }, extract: async () => ({}) })
+  t.after(() => app.close())
+  const response = await app.inject({
+    method: 'POST', url: '/v1/leads/qualify', headers,
+    payload: { ...payload, user_id: 'another-user' }
+  })
+  assert.equal(response.statusCode, 400, response.body)
+  assert.equal(db.calls.rpc, 0)
+})
+
+test('RBAC prevents authenticated users from qualifying leads for an unowned tenant', async t => {
+  for (const role of ['owner', 'admin', 'agent']) {
+    const db = fakeDb({ role })
+    let extracted = 0
+    const app = buildApp({
+      db, env: { NODE_ENV: 'test' },
+      extract: async () => { extracted++; return {} }
+    })
+    t.after(() => app.close())
+    const response = await app.inject({
+      method: 'POST', url: '/v1/leads/qualify', headers,
+      payload: { ...payload, business_id: B }
+    })
+    assert.equal(response.statusCode, 403, 'role=' + role)
+    assert.equal(db.calls.rpc, 0)
+    assert.equal(extracted, 0)
+  }
+})
