@@ -24,6 +24,7 @@ function fakeDb({ user = 'user-a', role = 'agent' } = {}) {
             return { data: values.business_id === A && values.user_id === user && role ? { role } : null, error: null }
           }
           if (table === 'inbound_events') return { data: null, error: null }
+          if (table === 'qualification_assessments') return { data: { policy_version: 1, required_fields: ['budget', 'timeline'], missing_fields: [], completeness_score: 100, next_action: 'review_qualification', qualification_decision: 'pending' }, error: null }
           throw new Error('Unexpected table')
         }
       }
@@ -94,6 +95,7 @@ test('simultaneous same-key requests converge to one logical lead', async t => {
         if (table === 'business_memberships') {
           return { data: values.business_id === A && values.user_id === 'user-a' ? { role: 'agent' } : null, error: null }
         }
+        if (table === 'qualification_assessments') return { data: { policy_version: 1, required_fields: ['budget', 'timeline'], missing_fields: ['budget','timeline'], completeness_score: 0, next_action: 'ask_budget', qualification_decision: 'pending' }, error: null }
         return { data: null, error: null }
       }
     }
