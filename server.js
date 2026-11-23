@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import 'dotenv/config'
 import Fastify from 'fastify'
 import { qualificationAgent } from './src/agents/qualificationAgent.js'
@@ -136,7 +138,9 @@ export function buildApp({ extract = qualificationAgent, db, env = process.env }
   return fastify
 }
 
-if (process.env.NODE_ENV !== 'test') {
+// Start the local HTTP listener only when this file is executed directly.
+// Serverless runtimes import buildApp and must never bind a TCP port.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { default: db } = await import('./src/services/supabase.js')
   const app = buildApp({ db })
   try {
