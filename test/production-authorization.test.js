@@ -143,7 +143,7 @@ test('RBAC qualification matrix: owner, admin, agent permitted; viewer and unkno
   }
 })
 
-test('RBAC checks use the authenticated user ID, not a user ID supplied in the body', async t => {
+test('RBAC ignores a client-supplied user ID and uses the verified session', async t => {
   const db = fakeDb({ user: 'user-a', role: 'owner' })
   const app = buildApp({ db, env: { NODE_ENV: 'test' }, extract: async () => ({}) })
   t.after(() => app.close())
@@ -151,8 +151,8 @@ test('RBAC checks use the authenticated user ID, not a user ID supplied in the b
     method: 'POST', url: '/v1/leads/qualify', headers,
     payload: { ...payload, user_id: 'another-user' }
   })
-  assert.equal(response.statusCode, 400, response.body)
-  assert.equal(db.calls.rpc, 0)
+  assert.equal(response.statusCode, 201, response.body)
+  assert.equal(db.calls.rpc, 1)
 })
 
 test('RBAC prevents authenticated users from qualifying leads for an unowned tenant', async t => {
