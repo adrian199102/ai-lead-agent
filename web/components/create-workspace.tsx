@@ -23,6 +23,11 @@ export function CreateWorkspace({ compact = false }: { compact?: boolean }) {
       })
       if (rpcError) throw rpcError
       if (typeof data !== 'string') throw new Error('Workspace creation did not return an ID.')
+      // Clear the form before navigation: the dashboard can update without
+      // unmounting this client component, otherwise the spinner stays visible.
+      setBusy(false)
+      setName('')
+      setOpen(false)
       router.replace('/dashboard?business=' + encodeURIComponent(data))
       router.refresh()
     } catch (cause) {
