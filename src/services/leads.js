@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { evaluateQualification } from './qualificationEngine.js'
 
 export function payloadHash({ name, phone, message }) {
   return createHash('sha256').update(JSON.stringify({
@@ -21,5 +22,5 @@ export async function qualifyNewLead({ businessId, eventKey, name, phone, messag
   if (error) throw new Error('Failed to persist qualification', { cause: error })
   const row = data?.[0]
   if (!row?.out_lead_id) throw new Error('Missing lead ID from database')
-  return { lead_id: row.out_lead_id, duplicate: row.out_duplicate, qualification }
+  return { lead_id: row.out_lead_id, duplicate: row.out_duplicate, qualification, assessment: evaluateQualification(qualification) }
 }
