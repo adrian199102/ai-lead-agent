@@ -74,6 +74,9 @@ test('authorized tenant agent can qualify a lead', async t => {
   const res = await app.inject({ method: 'POST', url: '/v1/leads/qualify', headers, payload })
   assert.equal(res.statusCode, 201, res.body)
   assert.equal(res.json().lead_id, B)
+  assert.equal(res.json().assessment.completeness_score, 100)
+  assert.equal(res.json().assessment.next_action, 'review_qualification')
+  assert.equal(res.json().assessment.qualification_decision, 'pending')
   assert.equal(db.calls.rpc, 1)
 })
 
