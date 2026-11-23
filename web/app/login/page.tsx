@@ -84,9 +84,6 @@ export default function Login() {
             ) : signup ? 'Create account' : 'Sign in'}
           </button>
         </form>
-        <p role="status" aria-live="polite" className="mt-3 min-h-5 text-center text-sm text-slate-500">
-          {busy ? loadingText : ''}
-        </p>
         {notice && <p role="alert" className="mt-4 rounded-lg bg-slate-100 p-3 text-sm">{notice}</p>}
         <button type="button" disabled={busy}
           className="mt-4 text-sm font-medium text-indigo-600 disabled:opacity-50"
