@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { serverClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 const API_URL = process.env.AI_LEAD_AGENT_API_URL || 'https://ai-lead-agent-5hpny23qh-adriangraven02-9841.vercel.app'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     const response = await fetch(API_URL + '/v1/leads/qualify', {
       method: 'POST', headers,
       body: JSON.stringify({ business_id: body.business_id, name: 'QA Synthetic Lead', message }),
-      cache: 'no-store', signal: AbortSignal.timeout(25000)
+      cache: 'no-store', signal: AbortSignal.timeout(50000)
     })
     const raw = await response.text()
     let result: unknown
@@ -42,6 +43,6 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ http_status: response.status, mode, event_key: key, result })
   } catch {
-    return NextResponse.json({ error: 'Backend unavailable or timed out. No test result confirmed.' }, { status: 502 })
+    return NextResponse.json({ error: 'Backend did not respond before the proxy timeout. The write may still have succeeded; check workspace leads before retrying.', mode, event_key: key }, { status: 502 })
   }
 }
