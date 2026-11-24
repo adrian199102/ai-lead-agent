@@ -1,3 +1,14 @@
+export function normalizeBudget(value) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed ? trimmed.slice(0, 200) : null
+  }
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return String(value)
+  }
+  return null
+}
+
 export async function qualificationAgent(message) {
   // Import the live provider only when the real agent runs. Tests inject a mock
   // extractor and must not require production credentials during module load.
@@ -18,7 +29,7 @@ export async function qualificationAgent(message) {
   if (!raw) throw new Error('AI returned an empty response')
   const parsed = JSON.parse(raw)
   return {
-    budget: typeof parsed.budget === 'string' ? parsed.budget.slice(0, 200) : null,
+    budget: normalizeBudget(parsed.budget),
     timeline: typeof parsed.timeline === 'string' ? parsed.timeline.slice(0, 200) : null
   }
 }
