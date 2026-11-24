@@ -1,11 +1,20 @@
-// Demonstration budget bands in US dollars (USD). Replace with per-workspace
-// currency and configurable bands before enabling a public customer channel.
-export const BUDGET_RANGES = [
-  {value:'Below USD 5,000',label:'Below $5,000'},
-  {value:'USD 5,000–14,999',label:'$5,000–$14,999'},
-  {value:'USD 15,000–29,999',label:'$15,000–$29,999'},
-  {value:'USD 30,000–49,999',label:'$30,000–$49,999'},
-  {value:'USD 50,000–99,999',label:'$50,000–$99,999'},
-  {value:'USD 100,000 or more',label:'$100,000 or more'},
-  {value:'Not sure yet',label:'Not sure yet'}
+export const SUPPORTED_CURRENCIES = [
+ {code:'USD',label:'US Dollar (USD)'},{code:'EUR',label:'Euro (EUR)'},{code:'GBP',label:'British Pound (GBP)'},
+ {code:'PHP',label:'Philippine Peso (PHP)'},{code:'SGD',label:'Singapore Dollar (SGD)'},
+ {code:'AUD',label:'Australian Dollar (AUD)'},{code:'CAD',label:'Canadian Dollar (CAD)'},
+ {code:'JPY',label:'Japanese Yen (JPY)'},{code:'INR',label:'Indian Rupee (INR)'}
 ] as const
+export type CurrencyCode=typeof SUPPORTED_CURRENCIES[number]['code']
+export function budgetRanges(currencyCode:string='USD'){
+ const code=SUPPORTED_CURRENCIES.some(c=>c.code===currencyCode)?currencyCode:'USD'
+ const format=(n:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:code,maximumFractionDigits:0}).format(n)
+ const bands:[[number,number]|null,string][]=[
+  [null,'Not sure yet'],[[0,4999],'below'],[[5000,14999],'range'],[[15000,29999],'range'],
+  [[30000,49999],'range'],[[50000,99999],'range'],[[100000,Infinity],'above']
+ ]
+ return bands.map(([range,kind])=>{
+  if(!range)return {value:'Not sure yet',label:'Not sure yet'}
+  const label=kind==='below'?'Below '+format(5000):kind==='above'?format(100000)+' or more':format(range[0])+'–'+format(range[1])
+  return {value:code+' '+label,label}
+ })
+}
