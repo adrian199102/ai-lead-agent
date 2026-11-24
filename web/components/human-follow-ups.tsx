@@ -1,10 +1,12 @@
 'use client'
 import {useEffect,useState} from 'react'
+import {useRouter} from 'next/navigation'
 type Lead={id:string;name:string|null}
 type Assessment={lead_id:string;next_action:string;qualification_decision:string}
 type FollowUp={id:string;lead_id:string;assigned_to:string|null;question:string;response:string|null;due_at:string|null;status:string;created_at:string}
 type Member={user_id:string;role:string}
 export function HumanFollowUps({businessId,role,leads,assessments,initialFollowUps,members}:{businessId:string;role:string;leads:Lead[];assessments:Assessment[];initialFollowUps:FollowUp[];members:Member[]}){
+ const router=useRouter()
  const [items,setItems]=useState(initialFollowUps)
  const [leadId,setLeadId]=useState('')
  const [question,setQuestion]=useState('')
@@ -15,7 +17,7 @@ export function HumanFollowUps({businessId,role,leads,assessments,initialFollowU
  const [message,setMessage]=useState('')
  const [error,setError]=useState('')
  const canManage=['owner','admin'].includes(role)
- useEffect(()=>{setItems(initialFollowUps);setLeadId('');setQuestion('');setResponse('');setAssignee('');setDue('');setMessage('');setError('')},[businessId,initialFollowUps])
+ useEffect(()=>{setItems(initialFollowUps);setLeadId('');setQuestion('');setResponse('');setAssignee('');setDue('')},[businessId,initialFollowUps])
  const awaiting=assessments.filter(a=>a.qualification_decision==='pending'&&a.next_action==='human_follow_up'&&!items.some(f=>f.lead_id===a.lead_id))
  async function act(action:'assign'|'update'|'resolve'|'reopen',id:string){
   if(busy||!canManage)return
@@ -27,7 +29,8 @@ export function HumanFollowUps({businessId,role,leads,assessments,initialFollowU
    })})
    const data=await res.json()
    if(!res.ok)throw new Error(data.error||'Unable to save follow-up')
-   setMessage('Follow-up '+action+' saved. Refresh dashboard to see updated records and review queue.')
+   setMessage('Follow-up '+action+' saved. Dashboard data is updating automatically.')
+   router.refresh()
    setLeadId('');setQuestion('');setResponse('');setAssignee('');setDue('')
   }catch(e){setError(e instanceof Error?e.message:'Unable to save')}
   finally{setBusy(false)}
