@@ -9,8 +9,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const KEY = /^qa-inbound-[0-9a-f-]{36}$/
 const BASE_MESSAGES = {
   timeline: 'Synthetic QA inbound: I plan to proceed next month.',
-  budget: 'Synthetic QA inbound: My budget is 100000.',
-  both: 'Synthetic QA inbound: My budget is 100000 and I plan to proceed next month.'
+  budget: 'Synthetic QA inbound: My estimated budget range is PHP 5,000–14,999.',
+  both: 'Synthetic QA inbound: My estimated budget range is PHP 5,000–14,999 and I plan to proceed next month.'
 } as const
 const CHANGED_MESSAGE = 'Synthetic QA inbound: My timeline has changed to next quarter.'
 
