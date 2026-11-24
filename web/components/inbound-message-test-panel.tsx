@@ -1,0 +1,96 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+
+type Lead = { id: string; name: string | null }
+type TestResult = { http_status?: number; mode?: string; event_key?: string; lead_id?: string; result?: { message_id?: string; duplicate?: boolean; error?: string }; error?: string }
+type Mode = 'create' | 'repeat' | 'conflict'
+
+export function InboundMessageTestPanel({ businessId, role, leads }: { businessId: string; role: string; leads: Lead[] }) {
+  const [leadId, setLeadId] = useState(leads[0]?.id ?? '')
+  const [approved, setApproved] = useState(false)
+  const [busy, setBusy] = useState<Mode | ''>('')
+  const [eventKey, setEventKey] = useState('')
+  const [createdMessageId, setCreatedMessageId] = useState('')
+  const [results, setResults] = useState<TestResult[]>([])
+  const canWrite = ['owner', 'admin', 'agent'].includes(role)
+  useEffect(() => {
+    setLeadId(leads[0]?.id ?? '')
+    setApproved(false)
+    setEventKey('')
+    setCreatedMessageId('')
+    setResults([])
+  }, [businessId, leads])
+  function chooseLead(id: string) {
+    setLeadId(id)
+    setApproved(false)
+    setEventKey('')
+    setCreatedMessageId('')
+    setResults([])
+  }
+  async function run(mode: Mode) {
+    if (busy || !approved || !canWrite || !leadId || (mode !== 'create' && !eventKey)) return
+    setBusy(mode)
+    try {
+      const response = await fetch('/api/inbound-message-test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business_id: businessId, lead_id: leadId, mode,
+          key: mode === 'create' ? undefined : eventKey, approved: true
+        })
+      })
+      const data: TestResult = await response.json()
+      setResults(previous => [data, ...previous])
+      if (mode === 'create' && data.http_status === 201 && data.event_key && data.result?.message_id) {
+        setEventKey(data.event_key)
+        setCreatedMessageId(data.result.message_id)
+      }
+    } catch {
+      setResults(previous => [{ error: 'Network error; verify message records before retrying.' }, ...previous])
+    } finally { setBusy('') }
+  }
+  const expected: Record<Mode, number> = { create: 201, repeat: 200, conflict: 409 }
+  return <section className="mt-8 rounded-2xl border bg-white p-6">
+    <h2 className="text-lg font-bold">Inbound message acceptance lab</h2>
+    <p className="mt-2 text-sm text-slate-600">Test atomic message creation, idempotent replay, and conflict detection using your signed-in session. Only fixed synthetic QA messages are sent. Each successful Create adds one real test message to the selected lead.</p>
+    <label htmlFor="qa-inbound-lead" className="mt-5 block text-sm font-semibold">Existing test lead</label>
+    <select id="qa-inbound-lead" value={leadId} onChange={event => chooseLead(event.target.value)} className="mt-2 w-full rounded-xl border p-3 text-sm" disabled={!!busy || !canWrite}>
+      {leads.length === 0 && <option value="">No leads available</option>}
+      {leads.map(lead => <option key={lead.id} value={lead.id}>{lead.name || 'Unnamed lead'} — {lead.id}</option>)}
+    </select>
+    {!canWrite && <p className="mt-3 text-sm text-amber-700">Read-only access. Viewers cannot append inbound messages.</p>}
+    <label className="mt-4 flex items-start gap-2 text-sm">
+      <input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)} disabled={!canWrite || !leadId || !!busy} className="mt-1" />
+      I authorize creating a synthetic inbound message on this selected lead and testing its replay/conflict behavior.
+    </label>
+    <div className="mt-5 flex flex-wrap gap-2">
+      {([
+        ['create', '1. Create inbound message → 201'],
+        ['repeat', '2. Repeat same key → 200'],
+        ['conflict', '3. Changed message, same key → 409']
+      ] as const).map(([mode, label]) => <button key={mode} type="button" onClick={() => void run(mode)}
+        disabled={!!busy || !approved || !canWrite || !leadId || (mode !== 'create' && !eventKey)}
+        className="rounded-xl border border-indigo-200 px-3 py-2 text-sm font-medium text-indigo-700 disabled:opacity-40">
+        {busy === mode ? 'Testing…' : label}
+      </button>)}
+    </div>
+    {eventKey && <p className="mt-3 text-xs text-slate-500">Test event key: <code className="break-all">{eventKey}</code></p>}
+    {results.length > 0 && <div className="mt-6 space-y-3">
+      <h3 className="font-semibold">Responses</h3>
+      {results.map((result, index) => {
+        const mode = result.mode as Mode | undefined
+        const matches = mode && result.http_status === expected[mode] &&
+          (mode === 'create' ? result.result?.duplicate === false && !!result.result?.message_id :
+            mode === 'repeat' ? result.result?.duplicate === true && result.result?.message_id === createdMessageId :
+            result.result?.error === 'Idempotency key conflict')
+        return <div key={index} className="rounded-xl border p-3">
+          <p className={'mb-2 text-sm font-semibold ' + (matches ? 'text-green-700' : 'text-amber-700')}>
+            {matches ? 'PASS' : 'CHECK'} — {mode || 'Request'} — HTTP {result.http_status ?? 'unavailable'}
+          </p>
+          <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-slate-100 p-3 text-xs">{JSON.stringify(result, null, 2)}</pre>
+        </div>
+      })}
+    </div>}
+    <p className="mt-4 text-xs text-slate-500">Database counts are verified separately. The buttons validate API responses, not database persistence.</p>
+  </section>
+}
