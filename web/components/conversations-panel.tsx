@@ -1,13 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { BUDGET_RANGES } from '@/lib/budget-ranges'
+import { budgetRanges } from '@/lib/budget-ranges'
 
 type Lead = { id: string; name: string | null }
 type Message = { id: string; direction: string; message: string; created_at: string }
 type Snapshot = { messages: Message[]; assessment: { completeness_score: number; missing_fields: string[]; next_action: string; qualification_decision: string } | null; qualification: { budget: string | null; timeline: string | null } | null }
 
-export function ConversationsPanel({businessId,role,leads}:{businessId:string;role:string;leads:Lead[]}) {
+export function ConversationsPanel({businessId,role,leads,currencyCode}:{businessId:string;role:string;leads:Lead[];currencyCode:string}) {
   const [leadId,setLeadId] = useState(leads[0]?.id || '')
   const [snapshot,setSnapshot] = useState<Snapshot | null>(null)
   const [loading,setLoading] = useState(false)
@@ -32,6 +32,7 @@ export function ConversationsPanel({businessId,role,leads}:{businessId:string;ro
   },[businessId,leadId])
   useEffect(() => { void load() },[load])
   useEffect(() => { setLeadId(leads[0]?.id || '');setMessage('');setBudgetRange('');setApproved(false);setPendingKey('');setSnapshot(null) },[businessId,leads])
+  useEffect(()=>{setBudgetRange('');setPendingKey('')},[currencyCode])
   async function send() {
     const outboundText=budgetRange?('My estimated budget range is '+budgetRange+'.'+(message.trim()?' '+message.trim():'')):message.trim()
     if (!leadId || !canWrite || !approved || !outboundText.trim() || busy) return
@@ -78,7 +79,7 @@ export function ConversationsPanel({businessId,role,leads}:{businessId:string;ro
           <p className="mt-2 text-xs text-slate-500">{m.created_at}</p>
         </div></div>)}
     </div>
-    {canWrite?<><label htmlFor="conversation-budget" className="mt-4 block text-sm font-semibold">Estimated budget range (optional)</label><select id="conversation-budget" className="mt-2 w-full rounded-xl border p-3 text-sm" value={budgetRange} disabled={busy||!leadId} onChange={e=>{setBudgetRange(e.target.value);setPendingKey('')}}><option value="">Not provided — enter a free-text message instead</option>{BUDGET_RANGES.map(b=><option key={b.value} value={b.value}>{b.label}</option>)}</select><p className="mt-1 text-xs text-slate-500">Customer-style selection for this internal QA sandbox; not a public customer form.</p><label htmlFor="conversation-reply" className="mt-4 block text-sm font-semibold">Simulate the lead's next message</label>
+    {canWrite?<><label htmlFor="conversation-budget" className="mt-4 block text-sm font-semibold">Estimated budget range ({currencyCode}, optional)</label><select id="conversation-budget" className="mt-2 w-full rounded-xl border p-3 text-sm" value={budgetRange} disabled={busy||!leadId} onChange={e=>{setBudgetRange(e.target.value);setPendingKey('')}}><option value="">Not provided — enter a free-text message instead</option>{budgetRanges(currencyCode).map(b=><option key={b.value} value={b.value}>{b.label}</option>)}</select><p className="mt-1 text-xs text-slate-500">Customer-style selection for this internal QA sandbox; not a public customer form.</p><label htmlFor="conversation-reply" className="mt-4 block text-sm font-semibold">Simulate the lead's next message</label>
       <textarea id="conversation-reply" rows={3} maxLength={4000} className="mt-2 w-full rounded-xl border p-3 text-sm" placeholder="Example: I plan to proceed next month." value={message} disabled={busy||!leadId} onChange={e=>{setMessage(e.target.value);setPendingKey('')}}/>
       <label className="mt-3 flex items-start gap-2 text-sm"><input type="checkbox" checked={approved} onChange={e=>setApproved(e.target.checked)} className="mt-1"/> I authorize saving this simulated inbound message and its automated outbound response.</label>
       <button type="button" className="mt-3 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" disabled={!leadId||!approved||!message.trim()&&!budgetRange||busy} onClick={()=>void send()}>{busy?'Processing…':'Send simulated lead message'}</button>
