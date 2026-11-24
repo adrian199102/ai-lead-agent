@@ -140,7 +140,7 @@ export function buildApp({ extract = qualificationAgent, db, env = process.env }
     }
     // Never overwrite previously known budget/timeline with an absent extraction.
     const qualification = existing ? { budget: null, timeline: null } : await extract(message)
-    const { data, error } = await db.rpc('append_and_assess_inbound_message', {
+    const { data, error } = await db.rpc('append_assess_and_reply_inbound_message', {
       p_business_id: businessId,
       p_lead_id: leadId,
       p_event_key: eventKey,
@@ -159,6 +159,7 @@ export function buildApp({ extract = qualificationAgent, db, env = process.env }
     if (!row?.out_message_id) throw new Error('Missing persisted message ID')
     return reply.code(row.out_duplicate ? 200 : 201).send({
       message_id: row.out_message_id, lead_id: leadId, duplicate: row.out_duplicate,
+      outbound: { message_id: row.out_outbound_message_id, message: row.out_outbound_reply, direction: 'outbound' },
       qualification: { budget: row.out_budget, timeline: row.out_timeline },
       assessment: {
         completeness_score: row.out_completeness_score,
