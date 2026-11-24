@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 
 type Lead = { id: string; name: string | null }
-type TestResult = { http_status?: number; mode?: string; event_key?: string; lead_id?: string; result?: { message_id?: string; duplicate?: boolean; error?: string; qualification?: { budget?: string | null; timeline?: string | null }; assessment?: { completeness_score?: number; missing_fields?: string[]; next_action?: string; qualification_decision?: string } }; error?: string }
+type TestResult = { http_status?: number; mode?: string; event_key?: string; lead_id?: string; result?: { message_id?: string; duplicate?: boolean; error?: string; outbound?: { message_id?: string; message?: string; direction?: string }; qualification?: { budget?: string | null; timeline?: string | null }; assessment?: { completeness_score?: number; missing_fields?: string[]; next_action?: string; qualification_decision?: string } }; error?: string }
 type Mode = 'create' | 'repeat' | 'conflict'
 
 export function InboundMessageTestPanel({ businessId, role, leads }: { businessId: string; role: string; leads: Lead[] }) {
@@ -95,10 +95,11 @@ export function InboundMessageTestPanel({ businessId, role, leads }: { businessI
           <p className={'mb-2 text-sm font-semibold ' + (matches ? 'text-green-700' : 'text-amber-700')}>
             {matches ? 'PASS' : 'CHECK'} — {mode || 'Request'} — HTTP {result.http_status ?? 'unavailable'}
           </p>
+          {result.result?.outbound?.message && <div className="mb-3 rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-sm"><strong>Automated outbound response:</strong><p className="mt-1">{result.result.outbound.message}</p><p className="mt-1 text-xs text-slate-500">Persisted message ID: {result.result.outbound.message_id}</p></div>}
           <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-slate-100 p-3 text-xs">{JSON.stringify(result, null, 2)}</pre>
         </div>
       })}
     </div>}
-    <p className="mt-4 text-xs text-slate-500">Each response now includes the persisted qualification fields and recalculated assessment. Database counts are verified separately. The buttons validate API responses, not database persistence.</p>
+    <p className="mt-4 text-xs text-slate-500">New inbound events also create one persisted outbound follow-up, visible in the API response. Replays reuse the same outbound message ID. Each response now includes the persisted qualification fields and recalculated assessment. Database counts are verified separately. The buttons validate API responses, not database persistence.</p>
   </section>
 }
