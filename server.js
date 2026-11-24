@@ -90,8 +90,7 @@ export function buildApp({ extract = qualificationAgent, db, env = process.env }
     }
   })
 
-  // Inbound messages are appended in one database transaction. Qualification
-  // extraction/reassessment is deliberately a separate, subsequent milestone.
+  // Inbound message persistence and qualification reassessment run in one transaction.
   fastify.post('/v1/leads/:leadId/messages/inbound', {
     schema: {
       params: {
@@ -129,25 +128,47 @@ export function buildApp({ extract = qualificationAgent, db, env = process.env }
     if (!membership || !['owner', 'admin', 'agent'].includes(membership.role)) {
       return reply.code(403).send({ error: 'Forbidden' })
     }
-    // Hash includes lead identity to prevent reusing a key for another lead.
+    // Check the event before invoking the model; the RPC remains authoritative for races.
     const hash = payloadHash({ name: leadId, phone: null, message })
-    const { data, error } = await db.rpc('append_inbound_lead_message', {
+    const eventKey = request.headers['idempotency-key']
+    const { data: existing, error: eventError } = await db.from('lead_message_events')
+      .select('payload_hash,lead_id').eq('business_id', businessId)
+      .eq('event_key', eventKey).maybeSingle()
+    if (eventError) throw new Error('Unable to check message event', { cause: eventError })
+    if (existing && (existing.payload_hash !== hash || existing.lead_id !== leadId)) {
+      return reply.code(409).send({ error: 'Idempotency key conflict' })
+    }
+    // Never overwrite previously known budget/timeline with an absent extraction.
+    const qualification = existing ? { budget: null, timeline: null } : await extract(message)
+    const { data, error } = await db.rpc('append_and_assess_inbound_message', {
       p_business_id: businessId,
       p_lead_id: leadId,
-      p_event_key: request.headers['idempotency-key'],
+      p_event_key: eventKey,
       p_payload_hash: hash,
-      p_message: message
+      p_message: message,
+      p_budget: qualification.budget ?? null,
+      p_timeline: qualification.timeline ?? null
     })
     if (error) {
       if (error.code === '23505') return reply.code(409).send({ error: 'Idempotency key conflict' })
-      if (error.code === 'P0002') return reply.code(404).send({ error: 'Lead not found' })
-      if (error.code === '22023') return reply.code(400).send({ error: 'Invalid inbound message' })
-      throw new Error('Unable to persist inbound message', { cause: error })
+      if (error.code === 'P0002') return reply.code(404).send({ error: 'Lead or qualification state not found' })
+      if (error.code === '22023') return reply.code(400).send({ error: 'Invalid inbound qualification' })
+      throw new Error('Unable to persist inbound qualification', { cause: error })
     }
     const row = data?.[0]
     if (!row?.out_message_id) throw new Error('Missing persisted message ID')
-    return reply.code(row.out_duplicate ? 200 : 201)
-      .send({ message_id: row.out_message_id, lead_id: leadId, duplicate: row.out_duplicate })
+    return reply.code(row.out_duplicate ? 200 : 201).send({
+      message_id: row.out_message_id, lead_id: leadId, duplicate: row.out_duplicate,
+      qualification: { budget: row.out_budget, timeline: row.out_timeline },
+      assessment: {
+        completeness_score: row.out_completeness_score,
+        required_fields: row.out_required_fields,
+        missing_fields: row.out_missing_fields,
+        next_action: row.out_next_action,
+        qualification_decision: row.out_qualification_decision,
+        requires_human_review: row.out_next_action === 'review_qualification'
+      }
+    })
   })
 
   if (env.NODE_ENV !== 'production') {
