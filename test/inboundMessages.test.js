@@ -10,21 +10,24 @@ const body = { business_id: BUSINESS, message: 'I plan to proceed next month' }
 
 function fakeDb(role = 'owner') {
   let calls = 0
+  let extracts = 0
   return {
     get calls() { return calls },
+    get extracts() { return extracts },
+    extract: async () => { extracts++; return { budget: null, timeline: 'next month' } },
     auth: { getUser: async token => token === 'valid'
       ? { data: { user: { id: 'user-1' } }, error: null }
       : { data: null, error: { message: 'invalid' } } },
-    from: () => ({
+    from: table => ({
       select: () => ({
         eq: () => ({
-          eq: () => ({ maybeSingle: async () => ({ data: { role }, error: null }) })
+          eq: () => ({ maybeSingle: async () => ({ data: table === 'lead_message_events' ? null : { role }, error: null }) })
         })
       })
     }),
     rpc: async () => {
       calls++
-      return { data: [{ out_message_id: MESSAGE, out_duplicate: calls > 1 }], error: null }
+      return { data: [{ out_message_id: MESSAGE, out_duplicate: calls > 1, out_budget: null, out_timeline: 'next month', out_required_fields: ['budget','timeline'], out_missing_fields: ['budget'], out_completeness_score: 50, out_next_action: 'ask_budget', out_qualification_decision: 'pending' }], error: null }
     }
   }
 }
@@ -35,7 +38,7 @@ function headers(token = 'valid') {
 
 test('inbound message endpoint authenticates, authorizes and appends', async t => {
   const db = fakeDb()
-  const app = buildApp({ db, env: { NODE_ENV: 'test' } })
+  const app = buildApp({ db, extract: db.extract, env: { NODE_ENV: 'test' } })
   t.after(() => app.close())
   const first = await app.inject({ method: 'POST', url: URL, headers: headers(), payload: body })
   assert.equal(first.statusCode, 201)
@@ -45,6 +48,8 @@ test('inbound message endpoint authenticates, authorizes and appends', async t =
   assert.equal(replay.statusCode, 200)
   assert.equal(replay.json().duplicate, true)
   assert.equal(db.calls, 2)
+  assert.equal(first.json().assessment.next_action, 'ask_budget')
+  assert.equal(first.json().qualification.timeline, 'next month')
 })
 
 test('inbound endpoint rejects missing auth and viewer writes', async t => {
