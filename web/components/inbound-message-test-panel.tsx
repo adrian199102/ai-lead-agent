@@ -8,6 +8,9 @@ type Mode = 'create' | 'repeat' | 'conflict'
 
 export function InboundMessageTestPanel({ businessId, role, leads }: { businessId: string; role: string; leads: Lead[] }) {
   const [leadId, setLeadId] = useState(leads[0]?.id ?? '')
+  const [freshLeads, setFreshLeads] = useState<Lead[]>([])
+  const [createError, setCreateError] = useState('')
+  const [freshBusy, setFreshBusy] = useState(false)
   const [approved, setApproved] = useState(false)
   const [scenario, setScenario] = useState<'timeline' | 'budget' | 'both'>('timeline')
   const [busy, setBusy] = useState<Mode | ''>('')
@@ -17,6 +20,8 @@ export function InboundMessageTestPanel({ businessId, role, leads }: { businessI
   const canWrite = ['owner', 'admin', 'agent'].includes(role)
   useEffect(() => {
     setLeadId(leads[0]?.id ?? '')
+    setFreshLeads([])
+    setCreateError('')
     setApproved(false)
     setScenario('timeline')
     setEventKey('')
@@ -29,6 +34,28 @@ export function InboundMessageTestPanel({ businessId, role, leads }: { businessI
     setEventKey('')
     setCreatedMessageId('')
     setResults([])
+  }
+  async function createFreshLead() {
+    if (busy || freshBusy || !canWrite || !approved) return
+    setFreshBusy(true)
+    setCreateError('')
+    try {
+      const response = await fetch('/api/fresh-qa-lead', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_id: businessId, approved: true })
+      })
+      const data: { http_status?: number; result?: { lead_id?: string; assessment?: { completeness_score?: number; missing_fields?: string[] } }; error?: string } = await response.json()
+      if (data.http_status !== 201 || !data.result?.lead_id) {
+        setCreateError(data.error || 'Fresh lead creation failed (HTTP ' + (data.http_status ?? response.status) + ').')
+        return
+      }
+      const lead = { id: data.result.lead_id, name: 'QA Fresh Lead' }
+      setFreshLeads(previous => [lead, ...previous])
+      chooseLead(lead.id)
+      setApproved(true)
+    } catch {
+      setCreateError('Network error; refresh to check for a new lead before retrying.')
+    } finally { setFreshBusy(false) }
   }
   async function run(mode: Mode) {
     if (busy || !approved || !canWrite || !leadId || (mode !== 'create' && !eventKey)) return
@@ -55,9 +82,12 @@ export function InboundMessageTestPanel({ businessId, role, leads }: { businessI
   return <section className="mt-8 rounded-2xl border bg-white p-6">
     <h2 className="text-lg font-bold">Inbound message acceptance lab</h2>
     <p className="mt-2 text-sm text-slate-600">Test atomic message creation, idempotent replay, and conflict detection using your signed-in session. Only fixed synthetic QA messages are sent. Each successful Create adds one real test message to the selected lead.</p>
+    <div className="mt-5 flex flex-wrap items-center gap-3"><button type="button" onClick={() => void createFreshLead()} disabled={!canWrite || !approved || !!busy || freshBusy} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{freshBusy ? 'Creating fresh QA lead…' : 'Create Fresh QA Lead'}</button><span className="text-xs text-slate-500">Creates a new synthetic lead with Budget and Timeline empty. Check the authorization box first.</span></div>
+    {createError && <p role="alert" className="mt-3 text-sm text-red-700">{createError}</p>}
     <label htmlFor="qa-inbound-lead" className="mt-5 block text-sm font-semibold">Existing test lead</label>
-    <select id="qa-inbound-lead" value={leadId} onChange={event => chooseLead(event.target.value)} className="mt-2 w-full rounded-xl border p-3 text-sm" disabled={!!busy || !canWrite}>
-      {leads.length === 0 && <option value="">No leads available</option>}
+    <select id="qa-inbound-lead" value={leadId} onChange={event => chooseLead(event.target.value)} className="mt-2 w-full rounded-xl border p-3 text-sm" disabled={!!busy || freshBusy || !canWrite}>
+      {leads.length === 0 && freshLeads.length === 0 && <option value="">No leads available</option>}
+      {freshLeads.map(lead => <option key={lead.id} value={lead.id}>{lead.name} — {lead.id}</option>)}
       {leads.map(lead => <option key={lead.id} value={lead.id}>{lead.name || 'Unnamed lead'} — {lead.id}</option>)}
     </select>
     {!canWrite && <p className="mt-3 text-sm text-amber-700">Read-only access. Viewers cannot append inbound messages.</p>}
@@ -68,7 +98,7 @@ export function InboundMessageTestPanel({ businessId, role, leads }: { businessI
       <option value="both">Budget and timeline</option>
     </select>
     <label className="mt-4 flex items-start gap-2 text-sm">
-      <input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)} disabled={!canWrite || !leadId || !!busy} className="mt-1" />
+      <input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)} disabled={!canWrite || !!busy || freshBusy} className="mt-1" />
       I authorize creating a synthetic inbound message on this selected lead and testing its replay/conflict behavior.
     </label>
     <div className="mt-5 flex flex-wrap gap-2">
@@ -77,7 +107,7 @@ export function InboundMessageTestPanel({ businessId, role, leads }: { businessI
         ['repeat', '2. Repeat same key → 200'],
         ['conflict', '3. Changed message, same key → 409']
       ] as const).map(([mode, label]) => <button key={mode} type="button" onClick={() => void run(mode)}
-        disabled={!!busy || !approved || !canWrite || !leadId || (mode !== 'create' && !eventKey)}
+        disabled={!!busy || freshBusy || !approved || !canWrite || !leadId || (mode !== 'create' && !eventKey)}
         className="rounded-xl border border-indigo-200 px-3 py-2 text-sm font-medium text-indigo-700 disabled:opacity-40">
         {busy === mode ? 'Testing…' : label}
       </button>)}
