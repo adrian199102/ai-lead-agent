@@ -4,7 +4,7 @@ import { serverClient } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-const API_URL = process.env.AI_LEAD_AGENT_API_URL || 'https://ai-lead-agent-api-git-feature-secure-0dfa22-adriangraven02-9841.vercel.app'
+const API_URL = process.env.AI_LEAD_AGENT_API_URL || 'https://ai-lead-agent-2g89vhjhs-adriangraven02-9841.vercel.app'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const KEY = /^qa-inbound-[0-9a-f-]{36}$/
 const BASE_MESSAGES = {
