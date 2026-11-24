@@ -90,6 +90,66 @@ export function buildApp({ extract = qualificationAgent, db, env = process.env }
     }
   })
 
+  // Inbound messages are appended in one database transaction. Qualification
+  // extraction/reassessment is deliberately a separate, subsequent milestone.
+  fastify.post('/v1/leads/:leadId/messages/inbound', {
+    schema: {
+      params: {
+        type: 'object', required: ['leadId'],
+        properties: { leadId: { type: 'string', format: 'uuid' } }
+      },
+      body: {
+        type: 'object', additionalProperties: false, required: ['business_id', 'message'],
+        properties: {
+          business_id: { type: 'string', format: 'uuid' },
+          message: { type: 'string', minLength: 1, maxLength: 4000 }
+        }
+      },
+      headers: {
+        type: 'object', required: ['idempotency-key'],
+        properties: {
+          authorization: { type: 'string' },
+          'idempotency-key': { type: 'string', minLength: 1, maxLength: 200 }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const bearer = request.headers.authorization
+    if (!bearer?.startsWith('Bearer ') || !bearer.slice(7).trim()) {
+      return reply.code(401).send({ error: 'Unauthorized' })
+    }
+    const { data: auth, error: authError } = await db.auth.getUser(bearer.slice(7))
+    if (authError || !auth?.user?.id) return reply.code(401).send({ error: 'Unauthorized' })
+
+    const { business_id: businessId, message } = request.body
+    const leadId = request.params.leadId
+    const { data: membership, error: membershipError } = await db.from('business_memberships')
+      .select('role').eq('business_id', businessId).eq('user_id', auth.user.id).maybeSingle()
+    if (membershipError) throw new Error('Unable to verify business membership', { cause: membershipError })
+    if (!membership || !['owner', 'admin', 'agent'].includes(membership.role)) {
+      return reply.code(403).send({ error: 'Forbidden' })
+    }
+    // Hash includes lead identity to prevent reusing a key for another lead.
+    const hash = payloadHash({ name: leadId, phone: null, message })
+    const { data, error } = await db.rpc('append_inbound_lead_message', {
+      p_business_id: businessId,
+      p_lead_id: leadId,
+      p_event_key: request.headers['idempotency-key'],
+      p_payload_hash: hash,
+      p_message: message
+    })
+    if (error) {
+      if (error.code === '23505') return reply.code(409).send({ error: 'Idempotency key conflict' })
+      if (error.code === 'P0002') return reply.code(404).send({ error: 'Lead not found' })
+      if (error.code === '22023') return reply.code(400).send({ error: 'Invalid inbound message' })
+      throw new Error('Unable to persist inbound message', { cause: error })
+    }
+    const row = data?.[0]
+    if (!row?.out_message_id) throw new Error('Missing persisted message ID')
+    return reply.code(row.out_duplicate ? 200 : 201)
+      .send({ message_id: row.out_message_id, lead_id: leadId, duplicate: row.out_duplicate })
+  })
+
   if (env.NODE_ENV !== 'production') {
     fastify.post('/test-agent', {
       preHandler: requireDevKey, schema: { body: messageSchema }
