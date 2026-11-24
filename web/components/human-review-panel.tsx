@@ -3,8 +3,9 @@ import { useEffect,useState } from 'react'
 import { useRouter } from 'next/navigation'
 type Lead={id:string;name:string|null}
 type Review={id:string;lead_id:string;action:string;note:string|null;reviewer_id:string;created_at:string}
+type ReviewerMember={user_id:string;email?:string|null}
 type Assessment={lead_id:string;completeness_score:number;missing_fields:string[];qualification_decision:string;next_action:string}
-export function HumanReviewPanel({businessId,role,leads,assessments,initialReviews}:{businessId:string;role:string;leads:Lead[];assessments:Assessment[];initialReviews:Review[]}) {
+export function HumanReviewPanel({businessId,role,leads,assessments,initialReviews,reviewerMembers,currentUserId}:{businessId:string;role:string;leads:Lead[];assessments:Assessment[];initialReviews:Review[];reviewerMembers:ReviewerMember[];currentUserId:string}) {
  const router=useRouter()
  const [items,setItems]=useState(assessments)
  const [reviews,setReviews]=useState(initialReviews)
@@ -16,6 +17,7 @@ export function HumanReviewPanel({businessId,role,leads,assessments,initialRevie
  const [error,setError]=useState('')
  const [success,setSuccess]=useState('')
  const canReview=['owner','admin'].includes(role)
+ const reviewerEmail=(id:string)=>reviewerMembers.find(m=>m.user_id===id)?.email||'Unknown reviewer'
  useEffect(()=>{setItems(assessments);setReviews(initialReviews);setLeadId('');setAction('approve');setNote('');setApproved(false)},[businessId,assessments,initialReviews])
  const queue=items.filter(a=>a.qualification_decision==='pending'&&a.completeness_score===100&&a.next_action==='review_qualification')
  const selected=items.find(a=>a.lead_id===leadId)
@@ -30,7 +32,7 @@ export function HumanReviewPanel({businessId,role,leads,assessments,initialRevie
    if(!response.ok)throw new Error(data.error||'Review failed')
    const decision=action==='approve'?'qualified':action==='reject'?'disqualified':'pending'
    setItems(previous=>previous.map(a=>a.lead_id===leadId?{...a,qualification_decision:decision,next_action:action==='request_info'?'human_follow_up':'complete'}:a))
-   setReviews(previous=>[{id:data.result?.[0]?.audit_id||crypto.randomUUID(),lead_id:leadId,action,note:note.trim()||null,reviewer_id:'Current user',created_at:new Date().toISOString()},...previous])
+   setReviews(previous=>[{id:data.result?.[0]?.audit_id||crypto.randomUUID(),lead_id:leadId,action,note:note.trim()||null,reviewer_id:currentUserId,created_at:new Date().toISOString()},...previous])
    setSuccess('Review saved. '+(action==='request_info'?'The lead needs manual follow-up.':'Decision finalized.'))
    setApproved(false);setNote('');setLeadId('')
    router.refresh()
@@ -55,6 +57,6 @@ export function HumanReviewPanel({businessId,role,leads,assessments,initialRevie
   {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
   {success&&<p role="status" className="mt-3 text-sm text-green-700">{success}</p>}
   <h3 className="mt-7 font-semibold">Review audit history</h3>
-  <div className="mt-3 max-h-72 overflow-y-auto">{reviews.length===0?<p className="text-sm text-slate-500">No review actions recorded.</p>:reviews.map(r=><div key={r.id} className="border-b py-3 text-sm"><strong>{r.action.replace('_',' ')}</strong> · {leads.find(l=>l.id===r.lead_id)?.name||r.lead_id}<p className="text-xs text-slate-500">{r.created_at} · Reviewer: {r.reviewer_id}</p>{r.note&&<p className="mt-1 whitespace-pre-wrap">{r.note}</p>}</div>)}</div>
+  <div className="mt-3 max-h-72 overflow-y-auto">{reviews.length===0?<p className="text-sm text-slate-500">No review actions recorded.</p>:reviews.map(r=><div key={r.id} className="border-b py-3 text-sm"><strong>{r.action.replace('_',' ')}</strong> · {leads.find(l=>l.id===r.lead_id)?.name||r.lead_id}<p className="text-xs text-slate-500">{r.created_at} · Reviewer: {reviewerEmail(r.reviewer_id)}</p>{r.note&&<p className="mt-1 whitespace-pre-wrap">{r.note}</p>}</div>)}</div>
  </section>
 }
