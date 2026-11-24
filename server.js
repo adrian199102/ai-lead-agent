@@ -90,6 +90,47 @@ export function buildApp({ extract = qualificationAgent, db, env = process.env }
     }
   })
 
+  // Synthetic QA only: deterministic blank qualification, never calls the AI extractor.
+  fastify.post('/v1/leads/qa-fresh', {
+    schema: {
+      body: { type: 'object', additionalProperties: false, required: ['business_id'],
+        properties: { business_id: { type: 'string', format: 'uuid' } } },
+      headers: { type: 'object', required: ['idempotency-key'],
+        properties: { authorization: { type: 'string' },
+          'idempotency-key': { type: 'string', minLength: 1, maxLength: 200 } } }
+    }
+  }, async (request, reply) => {
+    const bearer = request.headers.authorization
+    if (!bearer?.startsWith('Bearer ') || !bearer.slice(7).trim())
+      return reply.code(401).send({ error: 'Unauthorized' })
+    const { data: auth, error: authError } = await db.auth.getUser(bearer.slice(7))
+    if (authError || !auth?.user?.id) return reply.code(401).send({ error: 'Unauthorized' })
+    const businessId = request.body.business_id
+    const { data: membership, error: membershipError } = await db.from('business_memberships')
+      .select('role').eq('business_id', businessId).eq('user_id', auth.user.id).maybeSingle()
+    if (membershipError) throw new Error('Unable to verify workspace membership', { cause: membershipError })
+    if (!membership || !['owner', 'admin', 'agent'].includes(membership.role))
+      return reply.code(403).send({ error: 'Forbidden' })
+
+    const name = 'QA Fresh Lead'
+    const message = 'Synthetic QA lead: budget and timeline not provided.'
+    const eventKey = request.headers['idempotency-key']
+    const hash = payloadHash({ name, phone: null, message })
+    const { data: existing, error: lookupError } = await db.from('inbound_events')
+      .select('lead_id,payload_hash').eq('business_id', businessId)
+      .eq('event_key', eventKey).maybeSingle()
+    if (lookupError) throw new Error('Unable to check QA event', { cause: lookupError })
+    if (existing) {
+      if (existing.payload_hash !== hash) return reply.code(409).send({ error: 'Idempotency key conflict' })
+      return reply.code(200).send({ lead_id: existing.lead_id, duplicate: true })
+    }
+    const result = await qualifyNewLead({
+      businessId, eventKey, name, phone: null, message,
+      qualification: { budget: null, timeline: null }
+    }, db)
+    return reply.code(result.duplicate ? 200 : 201).send(result)
+  })
+
   // Inbound message persistence and qualification reassessment run in one transaction.
   fastify.post('/v1/leads/:leadId/messages/inbound', {
     schema: {
