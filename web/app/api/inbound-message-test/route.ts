@@ -7,7 +7,11 @@ export const maxDuration = 60
 const API_URL = process.env.AI_LEAD_AGENT_API_URL || 'https://ai-lead-agent-api-git-feature-secure-0dfa22-adriangraven02-9841.vercel.app'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const KEY = /^qa-inbound-[0-9a-f-]{36}$/
-const BASE_MESSAGE = 'Synthetic QA inbound: I plan to proceed next month.'
+const BASE_MESSAGES = {
+  timeline: 'Synthetic QA inbound: I plan to proceed next month.',
+  budget: 'Synthetic QA inbound: My budget is 100000.',
+  both: 'Synthetic QA inbound: My budget is 100000 and I plan to proceed next month.'
+} as const
 const CHANGED_MESSAGE = 'Synthetic QA inbound: My timeline has changed to next quarter.'
 
 export async function POST(request: NextRequest) {
@@ -17,7 +21,7 @@ export async function POST(request: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session?.access_token) return NextResponse.json({ error: 'Session unavailable' }, { status: 401 })
 
-  let body: { business_id?: string; lead_id?: string; mode?: string; key?: string; approved?: boolean }
+  let body: { business_id?: string; lead_id?: string; mode?: string; key?: string; approved?: boolean; scenario?: 'timeline' | 'budget' | 'both' }
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   if (!body.business_id || !UUID.test(body.business_id) || !body.lead_id || !UUID.test(body.lead_id) ||
       !['create', 'repeat', 'conflict'].includes(body.mode || '') || body.approved !== true) {
@@ -40,7 +44,8 @@ export async function POST(request: NextRequest) {
 
   const bypass = process.env.AI_LEAD_AGENT_API_BYPASS_SECRET
   if (!bypass) return NextResponse.json({ error: 'Backend access is not configured' }, { status: 503 })
-  const message = mode === 'conflict' ? CHANGED_MESSAGE : BASE_MESSAGE
+  const scenario = body.scenario && Object.hasOwn(BASE_MESSAGES, body.scenario) ? body.scenario : 'timeline'
+  const message = mode === 'conflict' ? CHANGED_MESSAGE : BASE_MESSAGES[scenario]
   try {
     const response = await fetch(API_URL + '/v1/leads/' + body.lead_id + '/messages/inbound', {
       method: 'POST',
