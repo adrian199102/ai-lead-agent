@@ -1,9 +1,11 @@
 'use client'
 import { useEffect,useState } from 'react'
+import { useRouter } from 'next/navigation'
 type Lead={id:string;name:string|null}
 type Review={id:string;lead_id:string;action:string;note:string|null;reviewer_id:string;created_at:string}
 type Assessment={lead_id:string;completeness_score:number;missing_fields:string[];qualification_decision:string;next_action:string}
 export function HumanReviewPanel({businessId,role,leads,assessments,initialReviews}:{businessId:string;role:string;leads:Lead[];assessments:Assessment[];initialReviews:Review[]}) {
+ const router=useRouter()
  const [items,setItems]=useState(assessments)
  const [reviews,setReviews]=useState(initialReviews)
  const [leadId,setLeadId]=useState('')
@@ -14,7 +16,7 @@ export function HumanReviewPanel({businessId,role,leads,assessments,initialRevie
  const [error,setError]=useState('')
  const [success,setSuccess]=useState('')
  const canReview=['owner','admin'].includes(role)
- useEffect(()=>{setItems(assessments);setReviews(initialReviews);setLeadId('');setAction('approve');setNote('');setApproved(false);setError('');setSuccess('')},[businessId,assessments,initialReviews])
+ useEffect(()=>{setItems(assessments);setReviews(initialReviews);setLeadId('');setAction('approve');setNote('');setApproved(false)},[businessId,assessments,initialReviews])
  const queue=items.filter(a=>a.qualification_decision==='pending'&&a.completeness_score===100&&a.next_action==='review_qualification')
  const selected=items.find(a=>a.lead_id===leadId)
  async function submit(){
@@ -31,13 +33,14 @@ export function HumanReviewPanel({businessId,role,leads,assessments,initialRevie
    setReviews(previous=>[{id:data.result?.[0]?.audit_id||crypto.randomUUID(),lead_id:leadId,action,note:note.trim()||null,reviewer_id:'Current user',created_at:new Date().toISOString()},...previous])
    setSuccess('Review saved. '+(action==='request_info'?'The lead needs manual follow-up.':'Decision finalized.'))
    setApproved(false);setNote('');setLeadId('')
+   router.refresh()
   }catch(e){setError(e instanceof Error?e.message:'Review failed')}
   finally{setBusy(false)}
  }
  return <section id="human-reviews" className="mt-8 rounded-2xl border bg-white p-6">
   <h2 className="text-lg font-bold">Human qualification review</h2>
   <p className="mt-1 text-sm text-slate-600">Review queue · owner/admin decisions · auditable actions</p>
-  <div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm"><strong>Ready for review: {queue.length}</strong><p className="mt-1 text-slate-500">Only complete, pending assessments are shown here. Refresh the dashboard to see newly completed conversations.</p></div>
+  <div className="mt-5 rounded-xl bg-slate-50 p-4 text-sm"><strong>Ready for review: {queue.length}</strong><p className="mt-1 text-slate-500">Only complete, pending assessments are shown here. The queue updates automatically after review and follow-up actions.</p></div>
   <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-slate-500"><th className="p-3">Lead</th><th className="p-3">Completeness</th><th className="p-3">Decision</th><th className="p-3">Action</th></tr></thead><tbody>{queue.map(a=><tr key={a.lead_id} className="border-b"><td className="p-3">{leads.find(l=>l.id===a.lead_id)?.name||'Lead'} <span className="block text-xs text-slate-500">{a.lead_id}</span></td><td className="p-3">{a.completeness_score}%</td><td className="p-3">{a.qualification_decision}</td><td className="p-3">{canReview?<button type="button" className="rounded-lg border px-3 py-1 text-indigo-700" onClick={()=>{setLeadId(a.lead_id);setError('');setSuccess('')}}>Review</button>:'Read only'}</td></tr>)}</tbody></table>{queue.length===0&&<p className="p-4 text-sm text-slate-500">No leads currently awaiting review.</p>}</div>
   {canReview&&selected&&<div className="mt-5 rounded-xl border p-4"><h3 className="font-semibold">Review selected lead</h3><p className="mt-1 text-xs text-slate-500">{leadId}</p>
    <label className="mt-4 block text-sm font-semibold" htmlFor="review-action">Decision</label>
