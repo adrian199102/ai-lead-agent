@@ -94,7 +94,7 @@ export function InboundMessageTestPanel({ businessId, role, leads }: { businessI
     <label htmlFor="qa-inbound-scenario" className="mt-4 block text-sm font-semibold">Synthetic qualification scenario</label>
     <select id="qa-inbound-scenario" value={scenario} disabled={!!busy || !!eventKey} onChange={event => setScenario(event.target.value as 'timeline' | 'budget' | 'both')} className="mt-2 w-full rounded-xl border p-3 text-sm">
       <option value="timeline">Timeline only — next month</option>
-      <option value="budget">Budget only — 100000</option>
+      <option value="budget">Budget range only — ₱5,000–₱14,999</option>
       <option value="both">Budget and timeline</option>
     </select>
     <label className="mt-4 flex items-start gap-2 text-sm">
