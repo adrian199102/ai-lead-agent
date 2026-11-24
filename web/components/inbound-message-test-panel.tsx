@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react'
 
 type Lead = { id: string; name: string | null }
-type TestResult = { http_status?: number; mode?: string; event_key?: string; lead_id?: string; result?: { message_id?: string; duplicate?: boolean; error?: string }; error?: string }
+type TestResult = { http_status?: number; mode?: string; event_key?: string; lead_id?: string; result?: { message_id?: string; duplicate?: boolean; error?: string; qualification?: { budget?: string | null; timeline?: string | null }; assessment?: { completeness_score?: number; missing_fields?: string[]; next_action?: string; qualification_decision?: string } }; error?: string }
 type Mode = 'create' | 'repeat' | 'conflict'
 
 export function InboundMessageTestPanel({ businessId, role, leads }: { businessId: string; role: string; leads: Lead[] }) {
   const [leadId, setLeadId] = useState(leads[0]?.id ?? '')
   const [approved, setApproved] = useState(false)
+  const [scenario, setScenario] = useState<'timeline' | 'budget' | 'both'>('timeline')
   const [busy, setBusy] = useState<Mode | ''>('')
   const [eventKey, setEventKey] = useState('')
   const [createdMessageId, setCreatedMessageId] = useState('')
@@ -17,6 +18,7 @@ export function InboundMessageTestPanel({ businessId, role, leads }: { businessI
   useEffect(() => {
     setLeadId(leads[0]?.id ?? '')
     setApproved(false)
+    setScenario('timeline')
     setEventKey('')
     setCreatedMessageId('')
     setResults([])
@@ -36,7 +38,7 @@ export function InboundMessageTestPanel({ businessId, role, leads }: { businessI
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           business_id: businessId, lead_id: leadId, mode,
-          key: mode === 'create' ? undefined : eventKey, approved: true
+          key: mode === 'create' ? undefined : eventKey, approved: true, scenario
         })
       })
       const data: TestResult = await response.json()
@@ -59,6 +61,12 @@ export function InboundMessageTestPanel({ businessId, role, leads }: { businessI
       {leads.map(lead => <option key={lead.id} value={lead.id}>{lead.name || 'Unnamed lead'} — {lead.id}</option>)}
     </select>
     {!canWrite && <p className="mt-3 text-sm text-amber-700">Read-only access. Viewers cannot append inbound messages.</p>}
+    <label htmlFor="qa-inbound-scenario" className="mt-4 block text-sm font-semibold">Synthetic qualification scenario</label>
+    <select id="qa-inbound-scenario" value={scenario} disabled={!!busy || !!eventKey} onChange={event => setScenario(event.target.value as 'timeline' | 'budget' | 'both')} className="mt-2 w-full rounded-xl border p-3 text-sm">
+      <option value="timeline">Timeline only — next month</option>
+      <option value="budget">Budget only — 100000</option>
+      <option value="both">Budget and timeline</option>
+    </select>
     <label className="mt-4 flex items-start gap-2 text-sm">
       <input type="checkbox" checked={approved} onChange={event => setApproved(event.target.checked)} disabled={!canWrite || !leadId || !!busy} className="mt-1" />
       I authorize creating a synthetic inbound message on this selected lead and testing its replay/conflict behavior.
@@ -91,6 +99,6 @@ export function InboundMessageTestPanel({ businessId, role, leads }: { businessI
         </div>
       })}
     </div>}
-    <p className="mt-4 text-xs text-slate-500">Database counts are verified separately. The buttons validate API responses, not database persistence.</p>
+    <p className="mt-4 text-xs text-slate-500">Each response now includes the persisted qualification fields and recalculated assessment. Database counts are verified separately. The buttons validate API responses, not database persistence.</p>
   </section>
 }
