@@ -40,7 +40,27 @@ export function buildApp({ extract = qualificationAgent, db, env = process.env }
   // Server-to-server only; the web proxy supplies a dedicated shared secret.
   fastify.post('/v1/website-chat/conversation', {
     schema:{body:{type:'object',additionalProperties:false,required:['widget_id','token','event_key','message'],properties:{
-      widget_id:{type:'string',format:'uuid'},token:{type:'string',pattern:'^[a-fA-F0-9]{64} and tenant membership before any privileged database write.
+      widget_id:{type:'string',format:'uuid'},token:{type:'string',pattern:'^[a-fA-F0-9]{64}$'},
+      event_key:{type:'string',pattern:'^[a-zA-Z0-9_-]{8,100}$'},message:{type:'string',minLength:1,maxLength:4000}
+    }}}
+  },async(request,reply)=>{
+    const secret=env.CONVERSATION_INTERNAL_SECRET
+    const supplied=request.headers['x-conversation-secret']
+    if(env.INTELLIGENT_CONVERSATION_ENABLED!=='true'||!secret||secret.length<32) return reply.code(503).send({error:'Chat unavailable'})
+    if(typeof supplied!=='string'||!timingSafeEqual(createHash('sha256').update(secret).digest(),createHash('sha256').update(supplied).digest())) return reply.code(401).send({error:'Unauthorized'})
+    const {widget_id,token,event_key,message}=request.body
+    if(!message.trim()) return reply.code(400).send({error:'Invalid message'})
+    try{
+      const result=await orchestrateConversation({widgetId:widget_id,tokenHash:createHash('sha256').update(token).digest('hex'),eventKey:event_key,message},{store:createConversationStore(db)})
+      if(result.status==='busy') return reply.code(429).send({error:'Message processing; retry shortly'})
+      return reply.header('Cache-Control','no-store').send({result:{out_lead_id:result.leadId,out_reply:result.reply,out_completeness:result.completeness,out_next_action:result.nextAction}})
+    }catch(error){
+      const status=error.code==='42501'?401:error.code==='23505'?409:error.code==='22023'?429:503
+      return reply.code(status).send({error:status===401?'Chat session unavailable':status===409?'Message key conflict':status===429?'Please retry shortly':'Chat service unavailable'})
+    }
+  })
+
+  // Verify user JWT and tenant membership before any privileged database write.
   fastify.post('/v1/leads/qualify', {
     schema: {
       body: {
