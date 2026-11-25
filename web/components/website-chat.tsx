@@ -10,12 +10,15 @@ export function WebsiteChat({widgetId}:{widgetId:string}){
  const [busy,setBusy]=useState(false)
  const [error,setError]=useState('')
  const [consent,setConsent]=useState(false)
+ const [contactConsent,setContactConsent]=useState(false)
+ const [contactMethod,setContactMethod]=useState<'email'|'phone'>('email')
+ const [contactDetail,setContactDetail]=useState('')
  const [eventKey,setEventKey]=useState('')
  async function begin(){
-  if(!consent)return
+  if(!consent||!contactConsent||!contactDetail.trim())return
   setBusy(true);setError('')
   try{
-   const r=await fetch('/api/public-chat/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({widget_id:widgetId})})
+   const r=await fetch('/api/public-chat/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({widget_id:widgetId,contact_method:contactMethod,contact_detail:contactDetail.trim(),contact_consent:contactConsent})})
    const d=await r.json()
    if(!r.ok)throw new Error(d.error||'Chat unavailable')
    setToken(d.token)
@@ -41,7 +44,12 @@ export function WebsiteChat({widgetId}:{widgetId:string}){
   <p className="mt-1 text-sm text-slate-600">Automated lead qualification. Your messages may be reviewed by a person.</p>
   {!token?<div className="mt-5 space-y-4">
    <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> I agree to share my messages for lead qualification and follow-up.</label>
-   <button disabled={!consent||busy} onClick={()=>void begin()} className="rounded-lg bg-indigo-600 px-4 py-2 text-white disabled:opacity-40">{busy?'Connecting…':'Start chat'}</button>
+   <label className="block text-sm font-semibold" htmlFor="contact-method">Preferred contact method</label>
+   <select id="contact-method" className="w-full rounded-lg border p-2" value={contactMethod} onChange={e=>{setContactMethod(e.target.value as 'email'|'phone');setContactDetail('')}}><option value="email">Email</option><option value="phone">Phone</option></select>
+   <label className="block text-sm font-semibold" htmlFor="contact-detail">{contactMethod==='email'?'Email address':'Phone number (international format)'}</label>
+   <input id="contact-detail" className="w-full rounded-lg border p-2" type={contactMethod==='email'?'email':'tel'} autoComplete={contactMethod==='email'?'email':'tel'} value={contactDetail} onChange={e=>setContactDetail(e.target.value)} placeholder={contactMethod==='email'?'name@example.com':'+639171234567'} maxLength={254} required />
+   <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={contactConsent} onChange={e=>setContactConsent(e.target.checked)}/> I agree that this business may contact me using the {contactMethod==='email'?'email address':'phone number'} I provided about my inquiry. This does not subscribe me to marketing messages.</label>
+   <button disabled={!consent||!contactConsent||!contactDetail.trim()||busy} onClick={()=>void begin()} className="rounded-lg bg-indigo-600 px-4 py-2 text-white disabled:opacity-40">{busy?'Connecting…':'Start chat'}</button>
   </div>:<>
    <div role="log" aria-live="polite" className="mt-4 max-h-80 min-h-32 space-y-2 overflow-y-auto rounded-lg bg-slate-50 p-3">
     {lines.length===0&&<p className="text-sm text-slate-500">How can we help you?</p>}
