@@ -11,6 +11,18 @@ export async function POST(request:NextRequest){
  ||(body.timeline!==undefined&&(typeof body.timeline!=='string'||body.timeline.length>100)))
  return fail('Invalid message parameters',400)
  try{
+  if(process.env.INTELLIGENT_CONVERSATION_ENABLED==='true'){
+   const base=process.env.CONVERSATION_API_URL
+   const secret=process.env.CONVERSATION_INTERNAL_SECRET
+   if(!base||!secret||secret.length<32)return fail('Chat service unavailable',503)
+   const url=new URL('/v1/website-chat/conversation',base)
+   if(url.protocol!=='https:'&&!(process.env.NODE_ENV==='development'&&url.hostname==='localhost'))return fail('Chat service unavailable',503)
+   const upstream=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-conversation-secret':secret},body:JSON.stringify({widget_id:body.widget_id,token:body.token,event_key:body.event_key,message:body.message.trim()}),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(25000)})
+   if(!upstream.ok)return fail(upstream.status===401?'Chat session unavailable':upstream.status===409?'Message key conflict':upstream.status===429?'Please retry shortly':'Chat service unavailable',[401,409,429].includes(upstream.status)?upstream.status:503)
+   const payload=await upstream.json()
+   if(typeof payload?.result?.out_reply!=='string')return fail('Chat service unavailable',503)
+   return Response.json(payload,{headers:{'Cache-Control':'no-store'}})
+  }
   const {data,error}=await adminClient().rpc('website_chat_send',{
    p_widget_id:body.widget_id,p_token_hash:hashToken(body.token),p_event_key:body.event_key,
    p_message:body.message.trim(),p_budget:body.budget||null,p_timeline:body.timeline||null
