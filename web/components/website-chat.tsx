@@ -14,8 +14,16 @@ export function WebsiteChat({widgetId}:{widgetId:string}){
  const [contactMethod,setContactMethod]=useState<'email'|'phone'>('email')
  const [contactDetail,setContactDetail]=useState('')
  const [eventKey,setEventKey]=useState('')
+ const [contactTouched,setContactTouched]=useState(false)
+ const contactValue=contactDetail.trim()
+ const validContact=contactMethod==='email'
+  ? contactValue.length<=254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactValue)
+  : /^\+[1-9]\d{7,14}$/.test(contactValue)
+ const contactError=contactMethod==='email'
+  ? 'Enter a valid email address (for example, name@example.com).'
+  : 'Enter a valid international phone number (for example, +639171234567).'
  async function begin(){
-  if(!consent||!contactConsent||!contactDetail.trim())return
+  if(!consent||!contactConsent||!validContact)return
   setBusy(true);setError('')
   try{
    const r=await fetch('/api/public-chat/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({widget_id:widgetId,contact_method:contactMethod,contact_detail:contactDetail.trim(),contact_consent:contactConsent})})
@@ -44,15 +52,16 @@ export function WebsiteChat({widgetId}:{widgetId:string}){
   <p className="mt-1 text-sm text-slate-600">Automated lead qualification. Your messages may be reviewed by a person.</p>
   {!token?<div className="mt-5 space-y-4">
    <label className="block text-sm font-semibold" htmlFor="contact-method">Preferred contact method</label>
-   <select id="contact-method" className="w-full rounded-lg border p-2" value={contactMethod} onChange={e=>{setContactMethod(e.target.value as 'email'|'phone');setContactDetail('')}}><option value="email">Email</option><option value="phone">Phone</option></select>
+   <select id="contact-method" className="w-full rounded-lg border p-2" value={contactMethod} onChange={e=>{setContactMethod(e.target.value as 'email'|'phone');setContactDetail('');setContactTouched(false)}}><option value="email">Email</option><option value="phone">Phone</option></select>
    <label className="block text-sm font-semibold" htmlFor="contact-detail">{contactMethod==='email'?'Email address':'Phone number (international format)'}</label>
-   <input id="contact-detail" className="w-full rounded-lg border p-2" type={contactMethod==='email'?'email':'tel'} autoComplete={contactMethod==='email'?'email':'tel'} value={contactDetail} onChange={e=>setContactDetail(e.target.value)} placeholder={contactMethod==='email'?'name@example.com':'+639171234567'} maxLength={254} required />
+   <input id="contact-detail" className="w-full rounded-lg border p-2" type={contactMethod==='email'?'email':'tel'} autoComplete={contactMethod==='email'?'email':'tel'} value={contactDetail} onChange={e=>setContactDetail(e.target.value)} onBlur={()=>setContactTouched(true)} aria-invalid={contactTouched&&!validContact} aria-describedby={contactTouched&&!validContact?'contact-detail-error':undefined} placeholder={contactMethod==='email'?'name@example.com':'+639171234567'} maxLength={254} required />
+   {contactTouched&&!validContact&&<p id="contact-detail-error" role="alert" className="text-sm text-red-700">{contactError}</p>}
    <fieldset className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
     <legend className="px-1 text-sm font-semibold">Your permissions</legend>
     <label className="flex items-start gap-3 text-sm"><input className="mt-1 shrink-0" type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> <span>I agree to share my messages for lead qualification and follow-up.</span></label>
     <label className="flex items-start gap-3 text-sm"><input className="mt-1 shrink-0" type="checkbox" checked={contactConsent} onChange={e=>setContactConsent(e.target.checked)}/> <span>I agree that this business may contact me using the {contactMethod==='email'?'email address':'phone number'} I provided about my inquiry. This does not subscribe me to marketing messages.</span></label>
    </fieldset>
-   <button disabled={!consent||!contactConsent||!contactDetail.trim()||busy} onClick={()=>void begin()} className="rounded-lg bg-indigo-600 px-4 py-2 text-white disabled:opacity-40">{busy?'Connecting…':'Start chat'}</button>
+   <button disabled={!consent||!contactConsent||!validContact||busy} onClick={()=>void begin()} className="rounded-lg bg-indigo-600 px-4 py-2 text-white disabled:opacity-40">{busy?'Connecting…':'Start chat'}</button>
   </div>:<>
    <div role="log" aria-live="polite" className="mt-4 max-h-80 min-h-32 space-y-2 overflow-y-auto rounded-lg bg-slate-50 p-3">
     {lines.length===0&&<p className="text-sm text-slate-500">How can we help you?</p>}
