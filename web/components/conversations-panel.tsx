@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { budgetRanges } from '@/lib/budget-ranges'
+import { useRouter } from 'next/navigation'
 
 type Lead = { id: string; name: string | null }
 type Message = { id: string; direction: string; message: string; created_at: string }
 type Snapshot = { messages: Message[]; assessment: { completeness_score: number; missing_fields: string[]; next_action: string; qualification_decision: string } | null; qualification: { budget: string | null; timeline: string | null } | null }
 
 export function ConversationsPanel({businessId,role,leads,currencyCode}:{businessId:string;role:string;leads:Lead[];currencyCode:string}) {
+  const router=useRouter()
   const [leadId,setLeadId] = useState(leads[0]?.id || '')
   const [snapshot,setSnapshot] = useState<Snapshot | null>(null)
   const [loading,setLoading] = useState(false)
@@ -50,6 +52,8 @@ export function ConversationsPanel({businessId,role,leads,currencyCode}:{busines
       setMessage('')
       setBudgetRange('')
       await load()
+      // Revalidate server-loaded qualification review and follow-up queues.
+      router.refresh()
     } catch(e) { setError((e instanceof Error ? e.message : 'Message failed')+' — retry uses the same event key.') }
     finally { setBusy(false) }
   }
