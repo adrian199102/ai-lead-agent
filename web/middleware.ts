@@ -14,4 +14,4 @@ export async function middleware(request: NextRequest) {
   if (request.nextUrl.pathname === '/login' && user) return NextResponse.redirect(new URL('/dashboard', request.url))
   return response
 }
-export const config = { matcher: ['/dashboard/:path*','/login'] }
+export const config = { runtime: 'nodejs', matcher: ['/dashboard/:path*','/login'] }
