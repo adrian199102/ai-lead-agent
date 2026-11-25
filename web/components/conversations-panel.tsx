@@ -33,7 +33,12 @@ export function ConversationsPanel({businessId,role,leads,currencyCode}:{busines
     finally { setLoading(false) }
   },[businessId,leadId])
   useEffect(() => { void load() },[load])
-  useEffect(() => { setLeadId(leads[0]?.id || '');setMessage('');setBudgetRange('');setApproved(false);setPendingKey('');setSnapshot(null) },[businessId,leads])
+  // A router.refresh() supplies a new leads array even when the selected workspace
+  // and lead have not changed. Never reset the conversation for that case.
+  useEffect(() => { setLeadId(leads[0]?.id || '');setMessage('');setBudgetRange('');setApproved(false);setPendingKey('');setSnapshot(null) },[businessId])
+  // Preserve the selected lead across server revalidation; only fall back if it
+  // is genuinely no longer in the refreshed list.
+  useEffect(() => { setLeadId(current => leads.some(l=>l.id===current) ? current : (leads[0]?.id || '')) },[leads])
   useEffect(()=>{setBudgetRange('');setPendingKey('')},[currencyCode])
   async function send() {
     const outboundText=budgetRange?('My estimated budget range is '+budgetRange+'.'+(message.trim()?' '+message.trim():'')):message.trim()
