@@ -6,6 +6,7 @@ export async function POST(request:NextRequest){
  let body:{business_id?:string;enabled?:boolean}
  try{body=await request.json()}catch{return NextResponse.json({error:'Invalid JSON'},{status:400})}
  if(!uuid.test(body.business_id||'')||typeof body.enabled!=='boolean')return NextResponse.json({error:'Invalid settings'},{status:400})
+ if(body.enabled && !process.env.SUPABASE_SERVICE_ROLE_KEY)return NextResponse.json({error:'Website chat backend credentials are not configured'},{status:503})
  const db=await serverClient()
  const {data:{user}}=await db.auth.getUser()
  if(!user)return NextResponse.json({error:'Unauthorized'},{status:401})
