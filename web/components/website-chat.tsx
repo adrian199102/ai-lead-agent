@@ -43,12 +43,15 @@ export function WebsiteChat({widgetId}:{widgetId:string}){
   <h1 className="text-xl font-bold">Chat with our assistant</h1>
   <p className="mt-1 text-sm text-slate-600">Automated lead qualification. Your messages may be reviewed by a person.</p>
   {!token?<div className="mt-5 space-y-4">
-   <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> I agree to share my messages for lead qualification and follow-up.</label>
    <label className="block text-sm font-semibold" htmlFor="contact-method">Preferred contact method</label>
    <select id="contact-method" className="w-full rounded-lg border p-2" value={contactMethod} onChange={e=>{setContactMethod(e.target.value as 'email'|'phone');setContactDetail('')}}><option value="email">Email</option><option value="phone">Phone</option></select>
    <label className="block text-sm font-semibold" htmlFor="contact-detail">{contactMethod==='email'?'Email address':'Phone number (international format)'}</label>
    <input id="contact-detail" className="w-full rounded-lg border p-2" type={contactMethod==='email'?'email':'tel'} autoComplete={contactMethod==='email'?'email':'tel'} value={contactDetail} onChange={e=>setContactDetail(e.target.value)} placeholder={contactMethod==='email'?'name@example.com':'+639171234567'} maxLength={254} required />
-   <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={contactConsent} onChange={e=>setContactConsent(e.target.checked)}/> I agree that this business may contact me using the {contactMethod==='email'?'email address':'phone number'} I provided about my inquiry. This does not subscribe me to marketing messages.</label>
+   <fieldset className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+    <legend className="px-1 text-sm font-semibold">Your permissions</legend>
+    <label className="flex items-start gap-3 text-sm"><input className="mt-1 shrink-0" type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> <span>I agree to share my messages for lead qualification and follow-up.</span></label>
+    <label className="flex items-start gap-3 text-sm"><input className="mt-1 shrink-0" type="checkbox" checked={contactConsent} onChange={e=>setContactConsent(e.target.checked)}/> <span>I agree that this business may contact me using the {contactMethod==='email'?'email address':'phone number'} I provided about my inquiry. This does not subscribe me to marketing messages.</span></label>
+   </fieldset>
    <button disabled={!consent||!contactConsent||!contactDetail.trim()||busy} onClick={()=>void begin()} className="rounded-lg bg-indigo-600 px-4 py-2 text-white disabled:opacity-40">{busy?'Connecting…':'Start chat'}</button>
   </div>:<>
    <div role="log" aria-live="polite" className="mt-4 max-h-80 min-h-32 space-y-2 overflow-y-auto rounded-lg bg-slate-50 p-3">
