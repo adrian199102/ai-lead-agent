@@ -17,6 +17,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --ignore-scripts --no-audit
+      - name: Mandatory frontend dependency security audit
+        run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run build
         env:
