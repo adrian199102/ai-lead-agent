@@ -6,7 +6,7 @@ alter table public.human_follow_up_events alter column actor_id drop not null;
 alter table public.human_follow_up_events add column actor_source text not null default 'human';
 alter table public.human_follow_up_events add constraint follow_up_event_actor_check check ((actor_source='human' and actor_id is not null) or (actor_source='ice' and actor_id is null));
 create or replace function public.complete_conversation_turn(p_lease_id uuid,p_message text,p_reply text,p_budget text default null,p_timeline text default null,p_input_tokens integer default null,p_output_tokens integer default null,p_processing_time_ms integer default null,p_model text default null,p_requires_human_review boolean default false) returns jsonb language plpgsql security invoker set search_path='' as $$
-declare t public.conversation_turns%rowtype; s public.website_chat_sessions%rowtype; a record; c record; inbound_id uuid; outbound_id uuid; event_id text; response jsonb; next_step text; score integer; f public.human_follow_ups%rowtype; decision text; final_reply text;
+declare t public.conversation_turns%rowtype; s public.website_chat_sessions%rowtype; a record; c record; inbound_id uuid; outbound_id uuid; event_id text; response jsonb; next_step text; score integer; f public.human_follow_ups%rowtype; decision text; final_reply text; owner_id uuid;
 begin
  select * into t from public.conversation_turns where lease_id=p_lease_id;
  if not found then raise exception 'Lease unavailable' using errcode='42501'; end if;
@@ -35,12 +35,13 @@ begin
  select qualification_decision into strict decision from public.qualification_assessments where business_id=s.business_id and lead_id=s.lead_id and policy_version=1 for update;
  select * into f from public.human_follow_ups where business_id=s.business_id and lead_id=s.lead_id for update;
  if decision='pending' and p_requires_human_review is true then
+   select user_id into owner_id from public.business_memberships where business_id=s.business_id and role='owner' order by user_id limit 1;
    if f.id is null then
-     insert into public.human_follow_ups(business_id,lead_id,question,creation_source) values(s.business_id,s.lead_id,left(trim(p_message),2000),'ice') returning * into f;
-     insert into public.human_follow_up_events(follow_up_id,business_id,lead_id,actor_source,action,note) values(f.id,s.business_id,s.lead_id,'ice','assign','Automatically queued by ICE; unassigned');
+     insert into public.human_follow_ups(business_id,lead_id,question,creation_source,assigned_to) values(s.business_id,s.lead_id,left(trim(p_message),2000),'ice',owner_id) returning * into f;
+     insert into public.human_follow_up_events(follow_up_id,business_id,lead_id,actor_source,action,note) values(f.id,s.business_id,s.lead_id,'ice','assign',case when owner_id is null then 'Automatically queued by ICE; no workspace owner available' else 'Automatically queued by ICE; assigned to workspace owner' end);
    elsif f.status='resolved' then
-     update public.human_follow_ups set status='open',question=left(trim(p_message),2000),response=null,resolved_by=null,resolved_at=null,updated_at=now() where id=f.id returning * into f;
-     insert into public.human_follow_up_events(follow_up_id,business_id,lead_id,actor_source,action,note) values(f.id,s.business_id,s.lead_id,'ice','reopen','New ICE escalation request');
+     update public.human_follow_ups set status='open',assigned_to=owner_id,question=left(trim(p_message),2000),response=null,resolved_by=null,resolved_at=null,updated_at=now() where id=f.id returning * into f;
+     insert into public.human_follow_up_events(follow_up_id,business_id,lead_id,actor_source,action,note) values(f.id,s.business_id,s.lead_id,'ice','reopen',case when owner_id is null then 'ICE reopened follow-up; no workspace owner available' else 'ICE reopened follow-up; assigned to workspace owner' end);
    end if;
    final_reply:='I have recorded your request for human follow-up. Your conversation details are available for review. I cannot confirm a response time.';
  elsif p_requires_human_review is true then
