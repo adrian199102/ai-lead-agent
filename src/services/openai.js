@@ -1,14 +1,10 @@
 import OpenAI from 'openai'
-import dotenv from 'dotenv'
+import 'dotenv/config'
 
-dotenv.config()
+if (!process.env.OPENAI_API_KEY) {
+  throw new Error('OPENAI_API_KEY is required')
+}
 
-const apiKey = process.env.OPENAI_API_KEY
-
-console.log('OPENAI KEY:', apiKey)
-
-const openai = new OpenAI({
-  apiKey: apiKey
-})
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 export default openai
